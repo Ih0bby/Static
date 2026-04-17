@@ -437,31 +437,44 @@ function ChamObject.new(player, interface)
 end
 
 function ChamObject:Construct()
-	self.highlight = Instance.new("Highlight", container);
+	self.highlight = nil; -- lazy: created only when chams is actually enabled
 end
 
 function ChamObject:Destruct()
-	self.highlight:Destroy();
+	if self.highlight then
+		self.highlight:Destroy();
+	end
 	clear(self);
 end
 
 function ChamObject:Update()
-	local highlight = self.highlight;
 	local interface = self.interface;
 	local character = Utils.Player.GetCharacter(self.player);
 	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
-	local enabled = options.enabled and character and not
+	local enabled = options.enabled and character and options.chams and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
-	highlight.Enabled = enabled and options.chams;
-	if highlight.Enabled then
-		highlight.Adornee = character;
-		highlight.FillColor = parseColor(self, options.chamsFillColor[1]);
-		highlight.FillTransparency = options.chamsFillColor[2];
-		highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true);
-		highlight.OutlineTransparency = options.chamsOutlineColor[2];
-		highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop";
+	if not enabled then
+		if self.highlight then
+			self.highlight:Destroy();
+			self.highlight = nil;
+		end
+		return;
 	end
+
+	-- only instantiate when actually needed
+	if not self.highlight then
+		self.highlight = Instance.new("Highlight", container);
+	end
+
+	local highlight = self.highlight;
+	highlight.Enabled = true;
+	highlight.Adornee = character;
+	highlight.FillColor = parseColor(self, options.chamsFillColor[1]);
+	highlight.FillTransparency = options.chamsFillColor[2];
+	highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true);
+	highlight.OutlineTransparency = options.chamsOutlineColor[2];
+	highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop";
 end
 
 -- instance class
@@ -684,6 +697,7 @@ function EspInterface.Load()
 	EspInterface.playerAdded   = players.PlayerAdded:Connect(createObject);
 	EspInterface.playerRemoving = players.PlayerRemoving:Connect(removeObject);
 
+	-- single shared loop drives all objects
 	EspInterface.heartbeat = runService.Heartbeat:Connect(function(dt)
 		for _, objects in next, EspInterface._objectCache do
 			objects[1]:Update(dt);
