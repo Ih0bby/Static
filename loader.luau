@@ -19,7 +19,7 @@ local CONFIG = {
     LOGO_URL = "https://raw.githubusercontent.com/Ih0bby/Static/main/logo.png",
     LOGO_PATH = "Static/assets/logo.png",
     KEY_PROVIDERS = {
-        { name = "Lootlabs", url = "https://ads.luarmor.net/get_key?for=Static-OWulwoDvNPea" },
+        { name = "Lootlabs (Recommended)", url = "https://ads.luarmor.net/get_key?for=Static-OWulwoDvNPea" },
         { name = "Linkvertise", url = "https://ads.luarmor.net/get_key?for=-LvxiSZlmxoFL" },
     },
 }
