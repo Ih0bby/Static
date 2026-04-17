@@ -58,11 +58,10 @@ end
 
 local function calculateCorners(cframe, size, data)
 	local corners = data and data.corners or {}
-	local half = size * 0.5
 	local minX, minY = viewportSize.X, viewportSize.Y
 	local maxX, maxY = 0, 0
 	for i = 1, 8 do
-		local point = (worldToScreen((cframe + half * VERTICES[i]).Position))
+		local point = worldToScreen((cframe + size * 0.5 * VERTICES[i]).Position)
 		corners[i] = point
 		local x, y = point.X, point.Y
 		if x < minX then
