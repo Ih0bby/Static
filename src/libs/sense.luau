@@ -24,6 +24,7 @@ local HEALTH_TEXT_OFFSET = Vector2.new(3, 0)
 local HEALTH_BAR_OUTLINE_OFFSET = Vector2.new(0, 1)
 local NAME_OFFSET = Vector2.new(0, 2)
 local DISTANCE_OFFSET = Vector2.new(0, 2)
+local WHITE = Color3.new(1, 1, 1)
 local VERTICES = {
 	Vector3.new(-1, -1, -1),
 	Vector3.new(-1, 1, -1),
@@ -93,7 +94,11 @@ end
 
 local function parseColor(self, color, isOutline)
 	if color == "Team Color" or self.interface.sharedSettings.useTeamColor and not isOutline then
-		return Utils.Player.GetTeamColor(self.player) or Color3.new(1, 1, 1)
+		if not self._teamColorCached then
+			self._teamColor = Utils.Player.GetTeamColor(self.player) or WHITE
+			self._teamColorCached = true
+		end
+		return self._teamColor
 	end
 	return color
 end
@@ -106,11 +111,11 @@ local function isEnabled(interface, options, character, userId)
 	return options.enabled and character and not (#interface.whitelist > 0 and not find(interface.whitelist, userId))
 end
 
-local function applyTextStyle(draw, shared, color, outline, outlineColor)
+local function applyTextStyle(draw, shared, color, transparency, outline, outlineColor)
 	draw.Size = shared.textSize
 	draw.Font = shared.textFont
-	draw.Color = color[1]
-	draw.Transparency = color[2]
+	draw.Color = color
+	draw.Transparency = transparency
 	draw.Outline = outline
 	draw.OutlineColor = outlineColor
 end
@@ -125,7 +130,9 @@ end
 
 local function hideDrawings(group)
 	for _, drawing in group do
-		drawing.Visible = false
+		if drawing.Visible then
+			drawing.Visible = false
+		end
 	end
 end
 
@@ -206,6 +213,7 @@ function EspObject:Update()
 	local interface = self.interface
 	local player = self.player
 	local options = getOptions(interface, player)
+	self._teamColorCached = false
 	self.options = options
 	if not options.enabled then
 		self.character = nil
@@ -222,17 +230,19 @@ function EspObject:Update()
 		self.onScreen = false
 		return
 	end
-	if options.healthBar or options.healthText then
-		self.health, self.maxHealth = Utils.Player.GetHealth(player)
-	end
-	if options.weapon then
-		self.weapon = Utils.Player.GetWeapon(player)
-	end
 	local _, onScreen, depth = worldToScreen(head.Position)
 	self.onScreen = onScreen
 	self.distance = depth
 	if interface.sharedSettings.limitDistance and depth > interface.sharedSettings.maxDistance then
 		self.onScreen = false
+	end
+	if self.onScreen then
+		if options.healthBar or options.healthText then
+			self.health, self.maxHealth = Utils.Player.GetHealth(player)
+		end
+		if options.weapon then
+			self.weapon = Utils.Player.GetWeapon(player)
+		end
 	end
 	if self.onScreen and needsCorners(options) then
 		local cache = self.charCache
@@ -269,6 +279,29 @@ function EspObject:Render()
 		hideDrawings(hidden)
 		for i = 1, 4 do
 			hideDrawings(box3d[i])
+		end
+		return
+	end
+	if not onScreen then
+		hideDrawings(visible)
+		for i = 1, 4 do
+			hideDrawings(box3d[i])
+		end
+		hidden.arrow.Visible = options.offScreenArrow
+		hidden.arrowOutline.Visible = hidden.arrow.Visible and options.offScreenArrowOutline
+		if hidden.arrow.Visible and self.direction then
+			local arrow = hidden.arrow
+			arrow.PointA = (viewportSize * 0.5 + self.direction * options.offScreenArrowRadius):Max(Vector2.one * 25):Min(viewportSize - Vector2.one * 25)
+			arrow.PointB = arrow.PointA - rotateVector(self.direction, 0.45) * options.offScreenArrowSize
+			arrow.PointC = arrow.PointA - rotateVector(self.direction, -0.45) * options.offScreenArrowSize
+			arrow.Color = parseColor(self, options.offScreenArrowColor[1])
+			arrow.Transparency = options.offScreenArrowColor[2]
+			local outline = hidden.arrowOutline
+			outline.PointA = arrow.PointA
+			outline.PointB = arrow.PointB
+			outline.PointC = arrow.PointC
+			outline.Color = parseColor(self, options.offScreenArrowOutlineColor[1], true)
+			outline.Transparency = options.offScreenArrowOutlineColor[2]
 		end
 		return
 	end
@@ -318,27 +351,27 @@ function EspObject:Render()
 		local barTo = corners.bottomLeft - HEALTH_BAR_OFFSET
 		local text = visible.healthText
 		text.Text = round(self.health) .. "hp"
-		applyTextStyle(text, interface.sharedSettings, { parseColor(self, options.healthTextColor[1]), options.healthTextColor[2] }, options.healthTextOutline, parseColor(self, options.healthTextOutlineColor, true))
+		applyTextStyle(text, interface.sharedSettings, parseColor(self, options.healthTextColor[1]), options.healthTextColor[2], options.healthTextOutline, parseColor(self, options.healthTextOutlineColor, true))
 		text.Position = barTo:Lerp(barFrom, ratio) - text.TextBounds * 0.5 - HEALTH_TEXT_OFFSET
 	end
 	visible.name.Visible = enabled and onScreen and options.name
 	if visible.name.Visible then
 		local text = visible.name
-		applyTextStyle(text, interface.sharedSettings, { parseColor(self, options.nameColor[1]), options.nameColor[2] }, options.nameOutline, parseColor(self, options.nameOutlineColor, true))
+		applyTextStyle(text, interface.sharedSettings, parseColor(self, options.nameColor[1]), options.nameColor[2], options.nameOutline, parseColor(self, options.nameOutlineColor, true))
 		text.Position = (corners.topLeft + corners.topRight) * 0.5 - Vector2.yAxis * text.TextBounds.Y - NAME_OFFSET
 	end
 	visible.distance.Visible = enabled and onScreen and self.distance and options.distance
 	if visible.distance.Visible then
 		local text = visible.distance
 		text.Text = round(self.distance) .. " studs"
-		applyTextStyle(text, interface.sharedSettings, { parseColor(self, options.distanceColor[1]), options.distanceColor[2] }, options.distanceOutline, parseColor(self, options.distanceOutlineColor, true))
+		applyTextStyle(text, interface.sharedSettings, parseColor(self, options.distanceColor[1]), options.distanceColor[2], options.distanceOutline, parseColor(self, options.distanceOutlineColor, true))
 		text.Position = (corners.bottomLeft + corners.bottomRight) * 0.5 + DISTANCE_OFFSET
 	end
 	visible.weapon.Visible = enabled and onScreen and options.weapon
 	if visible.weapon.Visible then
 		local text = visible.weapon
 		text.Text = self.weapon
-		applyTextStyle(text, interface.sharedSettings, { parseColor(self, options.weaponColor[1]), options.weaponColor[2] }, options.weaponOutline, parseColor(self, options.weaponOutlineColor, true))
+		applyTextStyle(text, interface.sharedSettings, parseColor(self, options.weaponColor[1]), options.weaponColor[2], options.weaponOutline, parseColor(self, options.weaponOutlineColor, true))
 		text.Position = (corners.bottomLeft + corners.bottomRight) * 0.5 + (visible.distance.Visible and DISTANCE_OFFSET + Vector2.yAxis * visible.distance.TextBounds.Y or Vector2.zero)
 	end
 	visible.tracer.Visible = enabled and onScreen and options.tracer
@@ -355,22 +388,7 @@ function EspObject:Render()
 		outline.To = tracer.To
 		outline.From = tracer.From
 	end
-	hidden.arrow.Visible = enabled and not onScreen and options.offScreenArrow
-	hidden.arrowOutline.Visible = hidden.arrow.Visible and options.offScreenArrowOutline
-	if hidden.arrow.Visible and self.direction then
-		local arrow = hidden.arrow
-		arrow.PointA = (viewportSize * 0.5 + self.direction * options.offScreenArrowRadius):Max(Vector2.one * 25):Min(viewportSize - Vector2.one * 25)
-		arrow.PointB = arrow.PointA - rotateVector(self.direction, 0.45) * options.offScreenArrowSize
-		arrow.PointC = arrow.PointA - rotateVector(self.direction, -0.45) * options.offScreenArrowSize
-		arrow.Color = parseColor(self, options.offScreenArrowColor[1])
-		arrow.Transparency = options.offScreenArrowColor[2]
-		local outline = hidden.arrowOutline
-		outline.PointA = arrow.PointA
-		outline.PointB = arrow.PointB
-		outline.PointC = arrow.PointC
-		outline.Color = parseColor(self, options.offScreenArrowOutlineColor[1], true)
-		outline.Transparency = options.offScreenArrowOutlineColor[2]
-	end
+	hideDrawings(hidden)
 	local box3dEnabled = enabled and onScreen and options.box3d
 	for i = 1, 4 do
 		local face = box3d[i]
@@ -415,21 +433,37 @@ function ChamObject:Destruct()
 end
 
 function ChamObject:Update()
-	local player = self.player
-	local interface = self.interface
-	local options = getOptions(interface, player)
-	local character = Utils.Player.GetCharacter(player)
-	local enabled = isEnabled(interface, options, character, player.UserId)
-	local highlight = self.highlight
-	highlight.Enabled = enabled and options.chams
-	if highlight.Enabled then
-		highlight.Adornee = character
-		highlight.FillColor = parseColor(self, options.chamsFillColor[1])
-		highlight.FillTransparency = options.chamsFillColor[2]
-		highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true)
-		highlight.OutlineTransparency = options.chamsOutlineColor[2]
-		highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop"
+	local esp = self.interface._objectCache[self.player]
+	local options, character, enabled
+	if esp and esp[1] then
+		local object = esp[1]
+		self._teamColorCached = object._teamColorCached
+		self._teamColor = object._teamColor
+		options = object.options
+		character = object.character
+		enabled = object.enabled
+	else
+		local player = self.player
+		local interface = self.interface
+		options = getOptions(interface, player)
+		character = Utils.Player.GetCharacter(player)
+		enabled = isEnabled(interface, options, character, player.UserId)
+		self._teamColorCached = false
 	end
+	local highlight = self.highlight
+	if not enabled or not options.chams then
+		if highlight.Enabled then
+			highlight.Enabled = false
+		end
+		return
+	end
+	highlight.Enabled = true
+	highlight.Adornee = character
+	highlight.FillColor = parseColor(self, options.chamsFillColor[1])
+	highlight.FillTransparency = options.chamsFillColor[2]
+	highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true)
+	highlight.OutlineTransparency = options.chamsOutlineColor[2]
+	highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop"
 end
 
 local InstanceObject = {}
