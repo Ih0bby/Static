@@ -240,18 +240,25 @@ function EspObject:Update()
 	if needsCorners then
 		local cache = self.charCache;
 		local children = getChildren(self.character);
-		if not cache[1] or self.childCount ~= #children then
-			clear(cache);
+		if not cache[1]
+            or cache[1].Parent ~= self.character
+            or self.childCount ~= #children
+        then
+            clear(cache);
+            for i = 1, #children do
+                local part = children[i];
+                if isA(part, "BasePart") and isBodyPart(part.Name) then
+                    cache[#cache + 1] = part;
+                end
+            end
+            self.childCount = #children;
+        end
 
-			for i = 1, #children do
-				local part = children[i];
-				if isA(part, "BasePart") and isBodyPart(part.Name) then
-					cache[#cache + 1] = part;
-				end
-			end
-
-			self.childCount = #children;
-		end
+		if cache[1] then
+            self.corners = calculateCorners(getBoundingBox(cache));
+        else
+            self.onScreen = false;
+        end
 
 		self.corners = calculateCorners(getBoundingBox(cache));
 	elseif not onScreen and options.offScreenArrow then
@@ -725,7 +732,7 @@ function EspInterface.Load()
 	end
 
 	local plrs = players:GetPlayers();
-	for i = 2, #plrs do
+	for i = 1, #plrs do
 		createObject(plrs[i]);
 	end
 
@@ -756,11 +763,21 @@ function EspInterface.Load()
 		end
 		EspInterface._wasAnyEnabled = true;
 
-		for _, objects in next, EspInterface._objectCache do
-			objects[1]:Update(dt);
-			objects[1]:Render(dt);
-			objects[2]:Update(dt);
-		end
+		if EspInterface._wasAnyEnabled then
+            for _, objects in next, EspInterface._objectCache do
+                if objects[2] then
+                    local esp = objects[1];
+                    esp.enabled = false;
+                    esp:Render(dt);
+                    local cham = objects[2];
+                    if cham.highlight then
+                        cham.highlight:Destroy();
+                        cham.highlight = nil;
+                    end
+                end
+            end
+            EspInterface._wasAnyEnabled = false;
+        end
 	end);
 
 	EspInterface._hasLoaded = true;
