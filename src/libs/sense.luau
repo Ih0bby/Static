@@ -135,7 +135,6 @@ function EspObject:Construct()
 	self.charCache = {};
 	self.childCount = 0;
 	self.bin = {};
-	self._wasEnabled = false;
 	self.drawings = {
 		box3d = {
 			{
@@ -177,9 +176,16 @@ function EspObject:Construct()
 			arrow = self:_create("Triangle", { Filled = true, Visible = false })
 		}
 	};
+
+	self.renderConnection = runService.Heartbeat:Connect(function(deltaTime)
+		self:Update(deltaTime);
+		self:Render(deltaTime);
+	end);
 end
 
 function EspObject:Destruct()
+	self.renderConnection:Disconnect();
+
 	for i = 1, #self.bin do
 		self.bin[i]:Remove();
 	end
@@ -189,34 +195,15 @@ end
 
 function EspObject:Update()
 	local interface = self.interface;
-	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
 
-	-- early exit: team master toggle off, don't touch anything else
-	if not options.enabled then
-		self.enabled = false;
-		self.onScreen = false;
-		return;
-	end
-
-	self.options = options;
+	self.options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
 	self.character = Utils.Player.GetCharacter(self.player);
-	self.enabled = self.character and not
+	self.health, self.maxHealth = Utils.Player.GetHealth(self.player);
+	self.weapon = Utils.Player.GetWeapon(self.player);
+	self.enabled = self.options.enabled and self.character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
-	if not self.enabled then
-		self.onScreen = false;
-		return;
-	end
-
-	-- only fetch health/weapon when a feature actually displays them
-	if options.healthBar or options.healthText then
-		self.health, self.maxHealth = Utils.Player.GetHealth(self.player);
-	end
-	if options.weapon then
-		self.weapon = Utils.Player.GetWeapon(self.player);
-	end
-
-	local head = findFirstChild(self.character, "Head");
+	local head = self.enabled and findFirstChild(self.character, "Head");
 	if not head then
 		self.charCache = {};
 		self.onScreen = false;
@@ -229,39 +216,26 @@ function EspObject:Update()
 
 	if interface.sharedSettings.limitDistance and depth > interface.sharedSettings.maxDistance then
 		self.onScreen = false;
-		onScreen = false;
 	end
 
-	-- only compute corners if a feature that needs them is enabled
-	local needsCorners = onScreen and (options.box or options.box3d or options.boxFill
-		or options.healthBar or options.healthText or options.name
-		or options.distance or options.weapon or options.tracer);
-
-	if needsCorners then
+	if self.onScreen then
 		local cache = self.charCache;
 		local children = getChildren(self.character);
-		if not cache[1]
-            or cache[1].Parent ~= self.character
-            or self.childCount ~= #children
-        then
-            clear(cache);
-            for i = 1, #children do
-                local part = children[i];
-                if isA(part, "BasePart") and isBodyPart(part.Name) then
-                    cache[#cache + 1] = part;
-                end
-            end
-            self.childCount = #children;
-        end
+		if not cache[1] or self.childCount ~= #children then
+			clear(cache);
 
-		if cache[1] then
-            self.corners = calculateCorners(getBoundingBox(cache));
-        else
-            self.onScreen = false;
-        end
+			for i = 1, #children do
+				local part = children[i];
+				if isA(part, "BasePart") and isBodyPart(part.Name) then
+					cache[#cache + 1] = part;
+				end
+			end
+
+			self.childCount = #children;
+		end
 
 		self.corners = calculateCorners(getBoundingBox(cache));
-	elseif not onScreen and options.offScreenArrow then
+	elseif self.options.offScreenArrow then
 		local cframe = camera.CFrame;
 		local flat = fromMatrix(cframe.Position, cframe.RightVector, Vector3.yAxis);
 		local objectSpace = pointToObjectSpace(flat, head.Position);
@@ -270,31 +244,16 @@ function EspObject:Update()
 end
 
 function EspObject:Render()
+	local onScreen = self.onScreen or false;
 	local enabled = self.enabled or false;
 	local visible = self.drawings.visible;
 	local hidden = self.drawings.hidden;
 	local box3d = self.drawings.box3d;
-
-	-- fast path: hide everything once when disabled, then bail every frame
-	if not enabled then
-		if self._wasEnabled then
-			for _, d in next, visible do d.Visible = false end
-			for _, d in next, hidden  do d.Visible = false end
-			for _, face in next, box3d do
-				for _, line in next, face do line.Visible = false end
-			end
-			self._wasEnabled = false;
-		end
-		return;
-	end
-	self._wasEnabled = true;
-
-	local onScreen = self.onScreen or false;
 	local interface = self.interface;
 	local options = self.options;
 	local corners = self.corners;
 
-	visible.box.Visible = onScreen and options.box;
+	visible.box.Visible = enabled and onScreen and options.box;
 	visible.boxOutline.Visible = visible.box.Visible and options.boxOutline;
 	if visible.box.Visible then
 		local box = visible.box;
@@ -310,7 +269,7 @@ function EspObject:Render()
 		boxOutline.Transparency = options.boxOutlineColor[2];
 	end
 
-	visible.boxFill.Visible = onScreen and options.boxFill;
+	visible.boxFill.Visible = enabled and onScreen and options.boxFill;
 	if visible.boxFill.Visible then
 		local boxFill = visible.boxFill;
 		boxFill.Position = corners.topLeft;
@@ -319,7 +278,7 @@ function EspObject:Render()
 		boxFill.Transparency = options.boxFillColor[2];
 	end
 
-	visible.healthBar.Visible = onScreen and options.healthBar;
+	visible.healthBar.Visible = enabled and onScreen and options.healthBar;
 	visible.healthBarOutline.Visible = visible.healthBar.Visible and options.healthBarOutline;
 	if visible.healthBar.Visible then
 		local barFrom = corners.topLeft - HEALTH_BAR_OFFSET;
@@ -337,7 +296,7 @@ function EspObject:Render()
 		healthBarOutline.Transparency = options.healthBarOutlineColor[2];
 	end
 
-	visible.healthText.Visible = onScreen and options.healthText;
+	visible.healthText.Visible = enabled and onScreen and options.healthText;
 	if visible.healthText.Visible then
 		local barFrom = corners.topLeft - HEALTH_BAR_OFFSET;
 		local barTo = corners.bottomLeft - HEALTH_BAR_OFFSET;
@@ -353,7 +312,7 @@ function EspObject:Render()
 		healthText.Position = lerp2(barTo, barFrom, self.health/self.maxHealth) - healthText.TextBounds*0.5 - HEALTH_TEXT_OFFSET;
 	end
 
-	visible.name.Visible = onScreen and options.name;
+	visible.name.Visible = enabled and onScreen and options.name;
 	if visible.name.Visible then
 		local name = visible.name;
 		name.Size = interface.sharedSettings.textSize;
@@ -365,7 +324,7 @@ function EspObject:Render()
 		name.Position = (corners.topLeft + corners.topRight)*0.5 - Vector2.yAxis*name.TextBounds.Y - NAME_OFFSET;
 	end
 
-	visible.distance.Visible = onScreen and self.distance and options.distance;
+	visible.distance.Visible = enabled and onScreen and self.distance and options.distance;
 	if visible.distance.Visible then
 		local distance = visible.distance;
 		distance.Text = round(self.distance) .. " studs";
@@ -378,7 +337,7 @@ function EspObject:Render()
 		distance.Position = (corners.bottomLeft + corners.bottomRight)*0.5 + DISTANCE_OFFSET;
 	end
 
-	visible.weapon.Visible = onScreen and options.weapon;
+	visible.weapon.Visible = enabled and onScreen and options.weapon;
 	if visible.weapon.Visible then
 		local weapon = visible.weapon;
 		weapon.Text = self.weapon;
@@ -393,7 +352,7 @@ function EspObject:Render()
 			(visible.distance.Visible and DISTANCE_OFFSET + Vector2.yAxis*visible.distance.TextBounds.Y or Vector2.zero);
 	end
 
-	visible.tracer.Visible = onScreen and options.tracer;
+	visible.tracer.Visible = enabled and onScreen and options.tracer;
 	visible.tracerOutline.Visible = visible.tracer.Visible and options.tracerOutline;
 	if visible.tracer.Visible then
 		local tracer = visible.tracer;
@@ -412,7 +371,7 @@ function EspObject:Render()
 		tracerOutline.From = tracer.From;
 	end
 
-	hidden.arrow.Visible = (not onScreen) and options.offScreenArrow;
+	hidden.arrow.Visible = enabled and (not onScreen) and options.offScreenArrow;
 	hidden.arrowOutline.Visible = hidden.arrow.Visible and options.offScreenArrowOutline;
 	if hidden.arrow.Visible and self.direction then
 		local arrow = hidden.arrow;
@@ -430,7 +389,7 @@ function EspObject:Render()
 		arrowOutline.Transparency = options.offScreenArrowOutlineColor[2];
 	end
 
-	local box3dEnabled = onScreen and options.box3d;
+	local box3dEnabled = enabled and onScreen and options.box3d;
 	for i = 1, #box3d do
 		local face = box3d[i];
 		for i2 = 1, #face do
@@ -469,54 +428,36 @@ function ChamObject.new(player, interface)
 end
 
 function ChamObject:Construct()
-	self.highlight = nil; -- lazy: created only when chams is actually enabled
+	self.highlight = Instance.new("Highlight", container);
+	self.updateConnection = runService.Heartbeat:Connect(function()
+		self:Update();
+	end);
 end
 
 function ChamObject:Destruct()
-	if self.highlight then
-		self.highlight:Destroy();
-	end
+	self.updateConnection:Disconnect();
+	self.highlight:Destroy();
+
 	clear(self);
 end
 
 function ChamObject:Update()
+	local highlight = self.highlight;
 	local interface = self.interface;
-	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
-
-	-- early exit: team master off OR chams off, kill highlight if exists and bail
-	if not (options.enabled and options.chams) then
-		if self.highlight then
-			self.highlight:Destroy();
-			self.highlight = nil;
-		end
-		return;
-	end
-
 	local character = Utils.Player.GetCharacter(self.player);
-	local enabled = character and not
+	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
+	local enabled = options.enabled and character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
-	if not enabled then
-		if self.highlight then
-			self.highlight:Destroy();
-			self.highlight = nil;
-		end
-		return;
+	highlight.Enabled = enabled and options.chams;
+	if highlight.Enabled then
+		highlight.Adornee = character;
+		highlight.FillColor = parseColor(self, options.chamsFillColor[1]);
+		highlight.FillTransparency = options.chamsFillColor[2];
+		highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true);
+		highlight.OutlineTransparency = options.chamsOutlineColor[2];
+		highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop";
 	end
-
-	-- only instantiate when actually needed
-	if not self.highlight then
-		self.highlight = Instance.new("Highlight", container);
-	end
-
-	local highlight = self.highlight;
-	highlight.Enabled = true;
-	highlight.Adornee = character;
-	highlight.FillColor = parseColor(self, options.chamsFillColor[1]);
-	highlight.FillTransparency = options.chamsFillColor[2];
-	highlight.OutlineColor = parseColor(self, options.chamsOutlineColor[1], true);
-	highlight.OutlineTransparency = options.chamsOutlineColor[2];
-	highlight.DepthMode = options.chamsVisibleOnly and "Occluded" or "AlwaysOnTop";
 end
 
 -- instance class
@@ -732,75 +673,31 @@ function EspInterface.Load()
 	end
 
 	local plrs = players:GetPlayers();
-	for i = 1, #plrs do
+	for i = 2, #plrs do
 		createObject(plrs[i]);
 	end
 
-	EspInterface.playerAdded   = players.PlayerAdded:Connect(createObject);
+	EspInterface.playerAdded = players.PlayerAdded:Connect(createObject);
 	EspInterface.playerRemoving = players.PlayerRemoving:Connect(removeObject);
-
-	-- single shared loop drives all objects
-	EspInterface.heartbeat = runService.Heartbeat:Connect(function(dt)
-		local teams = EspInterface.teamSettings;
-		local anyEnabled = teams.enemy.enabled or teams.friendly.enabled;
-
-		-- global fast-exit: nothing is enabled, skip all per-player work entirely
-		if not anyEnabled then
-			if EspInterface._wasAnyEnabled then
-				for _, objects in next, EspInterface._objectCache do
-					local esp = objects[1];
-					esp.enabled = false;
-					esp:Render(dt);
-					local cham = objects[2];
-					if cham.highlight then
-						cham.highlight:Destroy();
-						cham.highlight = nil;
-					end
-				end
-				EspInterface._wasAnyEnabled = false;
-			end
-			return;
-		end
-		EspInterface._wasAnyEnabled = true;
-
-		if EspInterface._wasAnyEnabled then
-            for _, objects in next, EspInterface._objectCache do
-                if objects[2] then
-                    local esp = objects[1];
-                    esp.enabled = false;
-                    esp:Render(dt);
-                    local cham = objects[2];
-                    if cham.highlight then
-                        cham.highlight:Destroy();
-                        cham.highlight = nil;
-                    end
-                end
-            end
-            EspInterface._wasAnyEnabled = false;
-        end
-	end);
-
 	EspInterface._hasLoaded = true;
 end
 
 function EspInterface.Unload()
 	assert(EspInterface._hasLoaded, "Esp has not been loaded yet.");
 
-	EspInterface.heartbeat:Disconnect();
-	EspInterface.playerAdded:Disconnect();
-	EspInterface.playerRemoving:Disconnect();
-
-	for index, object in next, EspInterface._objectCache do
+	for index, object in EspInterface._objectCache do
 		for i = 1, #object do
 			object[i]:Destruct();
 		end
 		EspInterface._objectCache[index] = nil;
 	end
 
+	EspInterface.playerAdded:Disconnect();
+	EspInterface.playerRemoving:Disconnect();
 	EspInterface._hasLoaded = false;
 end
 
-EspInterface.ChamObject = ChamObject;
-EspInterface.EspObject = EspObject;
+EspInterface.ChamObject = ChamObject
+EspInterface.EspObject = EspObject
 
 return EspInterface;
