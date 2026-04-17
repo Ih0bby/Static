@@ -123,6 +123,25 @@ local function createLineSet(self)
 	}
 end
 
+local function hideDrawings(group)
+	for _, drawing in group do
+		drawing.Visible = false
+	end
+end
+
+local function needsCorners(options)
+	return options.box
+		or options.boxOutline
+		or options.boxFill
+		or options.healthBar
+		or options.healthText
+		or options.name
+		or options.distance
+		or options.weapon
+		or options.tracer
+		or options.box3d
+end
+
 local EspObject = {}
 EspObject.__index = EspObject
 
@@ -187,11 +206,15 @@ function EspObject:Update()
 	local interface = self.interface
 	local player = self.player
 	local options = getOptions(interface, player)
-	local character = Utils.Player.GetCharacter(player)
 	self.options = options
+	if not options.enabled then
+		self.character = nil
+		self.enabled = false
+		self.onScreen = false
+		return
+	end
+	local character = Utils.Player.GetCharacter(player)
 	self.character = character
-	self.health, self.maxHealth = Utils.Player.GetHealth(player)
-	self.weapon = Utils.Player.GetWeapon(player)
 	self.enabled = isEnabled(interface, options, character, player.UserId)
 	local head = self.enabled and findFirstChild(character, "Head")
 	if not head then
@@ -199,13 +222,19 @@ function EspObject:Update()
 		self.onScreen = false
 		return
 	end
+	if options.healthBar or options.healthText then
+		self.health, self.maxHealth = Utils.Player.GetHealth(player)
+	end
+	if options.weapon then
+		self.weapon = Utils.Player.GetWeapon(player)
+	end
 	local _, onScreen, depth = worldToScreen(head.Position)
 	self.onScreen = onScreen
 	self.distance = depth
 	if interface.sharedSettings.limitDistance and depth > interface.sharedSettings.maxDistance then
 		self.onScreen = false
 	end
-	if self.onScreen then
+	if self.onScreen and needsCorners(options) then
 		local cache = self.charCache
 		local children = getChildren(character)
 		if not cache[1] or self.childCount ~= #children then
@@ -230,12 +259,20 @@ end
 function EspObject:Render()
 	local enabled = self.enabled or false
 	local onScreen = self.onScreen or false
-	local interface = self.interface
 	local options = self.options
 	local corners = self.corners
 	local visible = self.drawings.visible
 	local hidden = self.drawings.hidden
 	local box3d = self.drawings.box3d
+	if not enabled then
+		hideDrawings(visible)
+		hideDrawings(hidden)
+		for i = 1, 4 do
+			hideDrawings(box3d[i])
+		end
+		return
+	end
+	local interface = self.interface
 	visible.box.Visible = enabled and onScreen and options.box
 	visible.boxOutline.Visible = visible.box.Visible and options.boxOutline
 	if visible.box.Visible then
