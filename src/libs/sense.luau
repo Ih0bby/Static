@@ -189,15 +189,34 @@ end
 
 function EspObject:Update()
 	local interface = self.interface;
+	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
 
-	self.options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
+	-- early exit: team master toggle off, don't touch anything else
+	if not options.enabled then
+		self.enabled = false;
+		self.onScreen = false;
+		return;
+	end
+
+	self.options = options;
 	self.character = Utils.Player.GetCharacter(self.player);
-	self.health, self.maxHealth = Utils.Player.GetHealth(self.player);
-	self.weapon = Utils.Player.GetWeapon(self.player);
-	self.enabled = self.options.enabled and self.character and not
+	self.enabled = self.character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
-	local head = self.enabled and findFirstChild(self.character, "Head");
+	if not self.enabled then
+		self.onScreen = false;
+		return;
+	end
+
+	-- only fetch health/weapon when a feature actually displays them
+	if options.healthBar or options.healthText then
+		self.health, self.maxHealth = Utils.Player.GetHealth(self.player);
+	end
+	if options.weapon then
+		self.weapon = Utils.Player.GetWeapon(self.player);
+	end
+
+	local head = findFirstChild(self.character, "Head");
 	if not head then
 		self.charCache = {};
 		self.onScreen = false;
@@ -210,9 +229,15 @@ function EspObject:Update()
 
 	if interface.sharedSettings.limitDistance and depth > interface.sharedSettings.maxDistance then
 		self.onScreen = false;
+		onScreen = false;
 	end
 
-	if self.onScreen then
+	-- only compute corners if a feature that needs them is enabled
+	local needsCorners = onScreen and (options.box or options.box3d or options.boxFill
+		or options.healthBar or options.healthText or options.name
+		or options.distance or options.weapon or options.tracer);
+
+	if needsCorners then
 		local cache = self.charCache;
 		local children = getChildren(self.character);
 		if not cache[1] or self.childCount ~= #children then
@@ -229,7 +254,7 @@ function EspObject:Update()
 		end
 
 		self.corners = calculateCorners(getBoundingBox(cache));
-	elseif self.options.offScreenArrow then
+	elseif not onScreen and options.offScreenArrow then
 		local cframe = camera.CFrame;
 		local flat = fromMatrix(cframe.Position, cframe.RightVector, Vector3.yAxis);
 		local objectSpace = pointToObjectSpace(flat, head.Position);
@@ -449,9 +474,19 @@ end
 
 function ChamObject:Update()
 	local interface = self.interface;
-	local character = Utils.Player.GetCharacter(self.player);
 	local options = interface.teamSettings[Utils.Player.IsFriendly(self.player) and "friendly" or "enemy"];
-	local enabled = options.enabled and character and options.chams and not
+
+	-- early exit: team master off OR chams off, kill highlight if exists and bail
+	if not (options.enabled and options.chams) then
+		if self.highlight then
+			self.highlight:Destroy();
+			self.highlight = nil;
+		end
+		return;
+	end
+
+	local character = Utils.Player.GetCharacter(self.player);
+	local enabled = character and not
 		(#interface.whitelist > 0 and not find(interface.whitelist, self.player.UserId));
 
 	if not enabled then
@@ -699,6 +734,28 @@ function EspInterface.Load()
 
 	-- single shared loop drives all objects
 	EspInterface.heartbeat = runService.Heartbeat:Connect(function(dt)
+		local teams = EspInterface.teamSettings;
+		local anyEnabled = teams.enemy.enabled or teams.friendly.enabled;
+
+		-- global fast-exit: nothing is enabled, skip all per-player work entirely
+		if not anyEnabled then
+			if EspInterface._wasAnyEnabled then
+				for _, objects in next, EspInterface._objectCache do
+					local esp = objects[1];
+					esp.enabled = false;
+					esp:Render(dt);
+					local cham = objects[2];
+					if cham.highlight then
+						cham.highlight:Destroy();
+						cham.highlight = nil;
+					end
+				end
+				EspInterface._wasAnyEnabled = false;
+			end
+			return;
+		end
+		EspInterface._wasAnyEnabled = true;
+
 		for _, objects in next, EspInterface._objectCache do
 			objects[1]:Update(dt);
 			objects[1]:Render(dt);
