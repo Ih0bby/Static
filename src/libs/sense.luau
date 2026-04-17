@@ -219,7 +219,8 @@ function EspObject:Update()
 			end
 			self.childCount = #children
 		end
-		self.corners = calculateCorners(getBoundingBox(cache), self.corners)
+		local cframe, size = getBoundingBox(cache)
+		self.corners = calculateCorners(cframe, size, self.corners)
 	elseif options.offScreenArrow then
 		local flat = fromMatrix(camera.CFrame.Position, camera.CFrame.RightVector, Vector3.yAxis)
 		local objectSpace = flat:PointToObjectSpace(head.Position)
