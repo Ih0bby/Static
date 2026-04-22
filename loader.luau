@@ -50,6 +50,16 @@ local GAMES = {
         placeIds = { 114478751418135 },
         patterns = { "south london" },
     },
+    ["Boxing Beta"] = {
+        placeName = "Boxing Beta",
+        placeIds = { 6804602922 },
+        patterns = { "boxing beta" },
+    },
+    ["Asylum Life"] = {
+        placeName = "Asylum Life",
+        placeIds = { 132352755769957 },
+        patterns = { "asylum life" },
+    },
 }
 
 
