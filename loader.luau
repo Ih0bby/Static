@@ -41,8 +41,8 @@ local GAMES = {
         patterns = { "notoriety" },
     },
     ["Sniper Duels"] = {
-        placeName = "Sniper Duels",
-        placeIds = { 109397169461300 },
+        placeName = "",
+        placeIds = {  },
         patterns = {"sniper duels"}
     },
     ["South London"] = {
