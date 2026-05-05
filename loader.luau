@@ -318,20 +318,6 @@ function UI.build(logoAsset)
     UI.corner(c.card, 12)
     c.cardStroke = UI.stroke(c.card, T.cardborder, 1, 1)
 
-    c.cardShadow = UI.new("ImageLabel", {
-        Size = UDim2.new(1, 40, 1, 40),
-        Position = UDim2.new(0.5, 0, 0.5, 4),
-        AnchorPoint = Vector2.new(0.5, 0.5),
-        BackgroundTransparency = 1,
-        Image = "rbxassetid://5554236805",
-        ImageColor3 = T.black,
-        ImageTransparency = 1,
-        ScaleType = Enum.ScaleType.Slice,
-        SliceCenter = Rect.new(23, 23, 277, 277),
-        ZIndex = 9,
-        Parent = c.card,
-    })
-
     UI.makeDraggable(c.card)
 
     c.topAccent = UI.new("Frame", {
@@ -722,7 +708,7 @@ function UI.build(logoAsset)
         Position = UDim2.new(0.5, 0, 0.5, 3),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
-        Image = "rbxassetid://5554236805",
+        Image = "",
         ImageColor3 = T.black,
         ImageTransparency = 0.5,
         ScaleType = Enum.ScaleType.Slice,
@@ -949,7 +935,7 @@ function UI.build(logoAsset)
         Position = UDim2.new(0.5, 0, 0.5, 4),
         AnchorPoint = Vector2.new(0.5, 0.5),
         BackgroundTransparency = 1,
-        Image = "rbxassetid://5554236805",
+        Image = "",
         ImageColor3 = T.black,
         ImageTransparency = 0.4,
         ScaleType = Enum.ScaleType.Slice,
@@ -1203,7 +1189,6 @@ function Loader.new()
         local ui = self.ui
         UI.tween(ui.card, 0.35, { Position = UDim2.new(0.5, 0, 0.5, 15), BackgroundTransparency = 1, Size = UDim2.new(0, 390, 0, 330) }, Enum.EasingStyle.Back, Enum.EasingDirection.In)
         UI.tween(ui.cardStroke, 0.25, { Transparency = 1 })
-        UI.tween(ui.cardShadow, 0.25, { ImageTransparency = 1 })
 
         for _, v in ui.card:GetDescendants() do
             if v:IsA("TextLabel") or v:IsA("TextBox") or v:IsA("TextButton") then
@@ -1330,7 +1315,6 @@ function Loader.new()
 
             UI.tween(ui.card, 0.55, { BackgroundTransparency = 0, Position = UDim2.new(0.5, 0, 0.5, 0) }, Enum.EasingStyle.Back)
             UI.tween(ui.cardStroke, 0.55, { Transparency = 0 })
-            UI.tween(ui.cardShadow, 0.65, { ImageTransparency = 0.35 })
             UI.tween(ui.topAccent, 0.45, { BackgroundTransparency = 0 })
             task.wait(0.5)
 
